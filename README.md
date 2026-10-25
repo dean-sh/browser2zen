@@ -11,7 +11,7 @@
 [![Latest release](https://img.shields.io/github/v/release/tarikbc/browser2zen?display_name=tag&label=release)](./releases/latest)
 
 Move any browser to [Zen Browser](https://zen-browser.app/) in under a
-minute. **Arc, Chrome, Edge, Brave, Firefox, and Safari** are all
+minute. **Arc, Dia, Chrome, Edge, Brave, Firefox, and Safari** are all
 supported as sources. Workspaces, pinned tabs, bookmarks, browsing
 history, and login state come across.
 
@@ -206,8 +206,8 @@ and writes to its corresponding Zen file with a backup taken first.
 | --- | --- | --- |
 | Spaces & pinned tabs | source bookmarks (`StorableSidebar.json` / Chromium `Bookmarks` / `places.sqlite` / `Bookmarks.plist`) | `zen-sessions.jsonlz4`, `containers.json` |
 | Bookmarks | same as above | `places.sqlite` |
-| Favicons | Chromium `Favicons` SQLite (Arc/Chrome/Edge/Brave only) | `favicons.sqlite`, plus inline `image` data URIs in `zen-sessions.jsonlz4` |
-| History | Chromium `History` SQLite (Arc/Chrome/Edge/Brave only) | `places.sqlite` |
+| Favicons | Chromium `Favicons` SQLite (Arc/Dia/Chrome/Edge/Brave only) | `favicons.sqlite`, plus inline `image` data URIs in `zen-sessions.jsonlz4` |
+| History | Chromium `History` SQLite (Arc/Dia/Chrome/Edge/Brave only) | `places.sqlite` |
 | Cookies | Chromium `Cookies` SQLite (AES-128-CBC on macOS, AES-256-GCM on Windows) | `cookies.sqlite` (incl. per-space containers) |
 
 Firefox and Safari are bookmarks-only in v1 — their history and cookies

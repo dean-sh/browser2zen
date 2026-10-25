@@ -408,6 +408,53 @@ def test_edge_extractor_registered():
     assert by_name("edge") is EdgeExtractor
 
 
+def test_dia_extractor_registered():
+    from extractors import EXTRACTORS, DiaExtractor, by_name
+    assert by_name("dia") is DiaExtractor
+    assert EXTRACTORS.index(DiaExtractor) == 1
+
+
+def test_dia_extractor_reads_macos_user_data(tmp_path, monkeypatch):
+    import json
+    import sys
+    from pathlib import Path
+
+    monkeypatch.setattr(sys, "platform", "darwin")
+    monkeypatch.setattr(Path, "home", classmethod(lambda cls: tmp_path))
+    profile = tmp_path / "Library/Application Support/Dia/User Data/Default"
+    profile.mkdir(parents=True)
+    (profile / "Bookmarks").write_text(json.dumps({
+        "roots": {
+            "bookmark_bar": {
+                "type": "folder",
+                "name": "Bookmarks bar",
+                "children": [
+                    {"type": "url", "name": "Zen", "url": "https://zen-browser.app/"},
+                ],
+            },
+            "other": {"type": "folder", "name": "Other", "children": []},
+            "synced": {"type": "folder", "name": "Mobile", "children": []},
+        },
+    }))
+
+    from extractors import DiaExtractor
+
+    ext = DiaExtractor()
+    monkeypatch.setattr(ext, "is_running", lambda: False)
+    assert ext.is_installed()
+    data = ext.extract()
+    assert data.source == "dia"
+    urls = [t.url for s in data.spaces for t in (s.bookmarks or [])]
+    assert "https://zen-browser.app/" in urls
+
+
+def test_dia_extractor_uses_dia_keychain_and_process():
+    from extractors import DiaExtractor
+    assert DiaExtractor.keychain_service == "Dia Safe Storage"
+    assert DiaExtractor.keychain_account == "Dia"
+    assert DiaExtractor.macos_process_paths == ("Dia.app/Contents/MacOS/Dia",)
+
+
 def test_brave_extractor_registered():
     from extractors import BraveExtractor, by_name
     assert by_name("brave") is BraveExtractor

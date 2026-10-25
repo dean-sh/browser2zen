@@ -95,3 +95,42 @@ def test_explicit_bookmarks_stay_separate_from_pinned_tabs():
     assert [t["url"] for t in legacy["pinned_tabs"]] == ["https://pin.example/"]
     assert [t["url"] for t in legacy["bookmarks"]] == ["https://bm.example/"]
     assert [f["title"] for f in legacy["bookmark_folders"]] == ["BF"]
+
+
+def _profile_bookmark_export(space_names):
+    from extractors.base import ExportData, FolderRecord, SpaceRecord, TabRecord
+
+    folder = FolderRecord(folder_id="f1", title="Reading", space_id="chromium-profile")
+    return ExportData(
+        source="x",
+        spaces=[
+            SpaceRecord(space_id=f"id-{n}", space_name=n, bookmarks=[], bookmark_folders=[])
+            for n in space_names
+        ],
+        profile_bookmarks=[TabRecord(url="https://example.com/", title="Example", folder_id="f1")],
+        profile_bookmark_folders=[folder],
+    )
+
+
+def test_profile_bookmarks_land_on_the_first_space():
+    legacy = _profile_bookmark_export(["A", "B"]).to_legacy_dict()["spaces"]
+
+    assert [b["url"] for b in legacy[0]["bookmarks"]] == ["https://example.com/"]
+    assert legacy[0]["bookmarks"][0]["space_id"] == "id-A"
+    assert legacy[0]["bookmark_folders"][0]["space_id"] == "id-A"
+    assert legacy[1]["bookmarks"] == []
+
+
+def test_profile_bookmarks_survive_excluding_the_first_space():
+    export = _profile_bookmark_export(["A", "B"])
+    kept = type(export)(
+        source=export.source,
+        spaces=[s for s in export.spaces if s.space_name != "A"],
+        profile_bookmarks=export.profile_bookmarks,
+        profile_bookmark_folders=export.profile_bookmark_folders,
+    )
+
+    legacy = kept.to_legacy_dict()["spaces"]
+
+    assert [b["url"] for b in legacy[0]["bookmarks"]] == ["https://example.com/"]
+    assert legacy[0]["space_name"] == "B"

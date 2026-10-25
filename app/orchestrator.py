@@ -226,6 +226,9 @@ class MigrationOrchestrator:
                 if t.url:
                     all_urls.append(t.url)
 
+        if spaces:
+            bookmark_total += len(data.profile_bookmarks)
+
         # Cheap estimates for the heavy steps. Real counts emerge during the
         # run; the Preview screen just uses these for UX.
         favicon_match_estimate = self._estimate_favicons(all_urls)

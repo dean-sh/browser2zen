@@ -13,6 +13,7 @@ from .base import (
 )
 from .brave import BraveExtractor
 from .chrome import ChromeExtractor
+from .dia import DiaExtractor
 from .edge import EdgeExtractor
 from .firefox import FirefoxExtractor
 from .safari import SafariExtractor
@@ -20,6 +21,7 @@ from .safari import SafariExtractor
 # Order matters: this is the order the source picker presents them.
 EXTRACTORS: tuple[type[BrowserExtractor], ...] = (
     ArcExtractor,
+    DiaExtractor,
     ChromeExtractor,
     EdgeExtractor,
     BraveExtractor,
@@ -41,6 +43,7 @@ __all__ = [
     "BrowserExtractor",
     "BrowserExtractorError",
     "ChromeExtractor",
+    "DiaExtractor",
     "EXTRACTORS",
     "EdgeExtractor",
     "ExportData",

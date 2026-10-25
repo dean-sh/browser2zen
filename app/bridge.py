@@ -94,7 +94,8 @@ class Bridge:
             cls = by_name(name)
         except KeyError:
             return {"ok": False, "error": f"unknown source: {name!r}"}
-        inst = cls()
+        current = self.orchestrator.source
+        inst = current if type(current) is cls else cls()
         self.orchestrator = MigrationOrchestrator(source=inst)
         # Reset run state — the new source means a fresh detect/preview.
         with self._lock:

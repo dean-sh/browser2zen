@@ -116,7 +116,7 @@ function setLoading(btn, on, label = null) {
 //   small   — 32 px, used in the source picker + detect cards
 //   tiny    — 22 px, used inline (e.g. progress meta)
 
-const SOURCE_NAMES = ["arc", "chrome", "edge", "brave", "firefox", "safari"];
+const SOURCE_NAMES = ["arc", "dia", "chrome", "edge", "brave", "firefox", "safari"];
 
 function makeBrowserMark(name, size = "default") {
   const wrap = document.createElement("span");

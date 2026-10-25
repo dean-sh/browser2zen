@@ -20,7 +20,7 @@ and prints log output to your terminal.
 - `app/` is the GUI. `app.orchestrator.MigrationOrchestrator` is the
   single migration entry point; `app.bridge.Bridge` exposes it to
   JavaScript via `window.pywebview.api.<method>`.
-- `src/extractors/` is one module per source browser (Arc, Chrome, Edge,
+- `src/extractors/` is one module per source browser (Arc, Dia, Chrome, Edge,
   Brave, Firefox, Safari) implementing a small `BrowserExtractor` ABC.
 - `src/zen_*.py` are the source-agnostic Zen-side writers.
 - `src/chromium_*.py` are the generic Chromium-format readers (history,

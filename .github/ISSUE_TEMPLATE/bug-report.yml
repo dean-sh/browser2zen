@@ -22,6 +22,7 @@ body:
       description: Which browser were you migrating from?
       options:
         - Arc
+        - Dia
         - Chrome
         - Microsoft Edge
         - Brave

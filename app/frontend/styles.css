@@ -290,6 +290,8 @@ body[data-platform="mac"] main {
    primary brand identity — kept gentle so the icon stays the focus. */
 .brand-mark.arc     { background: linear-gradient(160deg, #FFF7F2 0%, #FFE9F0 60%, #FFD8E5 100%);
                       box-shadow: 0 4px 14px rgba(214, 60, 110, 0.22), inset 0 0 0 1px rgba(255,255,255,0.6); }
+.brand-mark.dia     { background: linear-gradient(160deg, #FFFBEF 0%, #FFEFC4 100%);
+                      box-shadow: 0 4px 14px rgba(245, 180, 20, 0.24), inset 0 0 0 1px rgba(255,255,255,0.6); }
 .brand-mark.chrome  { background: linear-gradient(160deg, #FFFFFF 0%, #F4F8FB 100%);
                       box-shadow: 0 4px 14px rgba(66, 133, 244, 0.22), inset 0 0 0 1px rgba(255,255,255,0.6); }
 .brand-mark.edge    { background: linear-gradient(160deg, #E5F6FB 0%, #CDE9F2 100%);

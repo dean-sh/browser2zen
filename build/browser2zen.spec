@@ -109,6 +109,7 @@ a = Analysis(
         "extractors.brave",
         "extractors.chrome",
         "extractors.chromium",
+        "extractors.dia",
         "extractors.edge",
         "extractors.firefox",
         "extractors.safari",
@@ -172,6 +173,8 @@ if IS_MAC:
             "LSApplicationCategoryType": "public.app-category.utilities",
             "LSMinimumSystemVersion": "12.0",
             "NSSupportsAutomaticTermination": True,
+            "NSAppleEventsUsageDescription":
+                "browser2zen reads your Dia spaces and tabs to migrate them, and quits browsers before migrating.",
             "NSDesktopFolderUsageDescription":
                 "browser2zen reads source-browser cookies from your library to migrate login state.",
         },

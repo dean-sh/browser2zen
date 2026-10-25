@@ -1,5 +1,5 @@
 """
-Shared base for Chromium-family browsers (Chrome, Edge, Brave).
+Shared base for Chromium-family browsers (Chrome, Edge, Brave, Dia).
 
 What's common across the family:
 - profiles live under a single "User Data" root,

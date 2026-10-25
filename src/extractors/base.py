@@ -29,7 +29,7 @@ from __future__ import annotations
 import logging
 import os
 from abc import ABC, abstractmethod
-from dataclasses import dataclass, field
+from dataclasses import dataclass, field, replace
 from pathlib import Path
 from typing import Any, Optional
 
@@ -139,6 +139,8 @@ class ExportData:
     """Unified intermediate representation handed to the Zen-side writers."""
     source: str                  # "arc", "chrome", "edge", "brave", "firefox", "safari"
     spaces: list[SpaceRecord] = field(default_factory=list)
+    profile_bookmarks: list[TabRecord] = field(default_factory=list)
+    profile_bookmark_folders: list[FolderRecord] = field(default_factory=list)
 
     def to_dict(self) -> dict[str, Any]:
         return {
@@ -156,7 +158,15 @@ class ExportData:
         new sources — every extractor lowers to this single shape.
         """
         spaces_out: list[dict[str, Any]] = []
-        for s in self.spaces:
+        for position, s in enumerate(self.spaces):
+            own_bookmarks = s.bookmarks if s.bookmarks is not None else s.pinned_tabs
+            own_bookmark_folders = s.bookmark_folders if s.bookmark_folders is not None else s.folders
+            is_first = position == 0
+            space_bookmarks = [*own_bookmarks, *(self.profile_bookmarks if is_first else [])]
+            space_bookmark_folders = [
+                *own_bookmark_folders,
+                *(replace(f, space_id=s.space_id) for f in (self.profile_bookmark_folders if is_first else [])),
+            ]
             spaces_out.append({
                 "space_id": s.space_id,
                 "space_name": s.space_name,
@@ -213,9 +223,7 @@ class ExportData:
                         "index": idx,
                         "is_essential": t.is_essential,
                     }
-                    for idx, t in enumerate(
-                        s.bookmarks if s.bookmarks is not None else s.pinned_tabs
-                    )
+                    for idx, t in enumerate(space_bookmarks)
                 ],
                 "bookmark_folders": [
                     {
@@ -226,8 +234,7 @@ class ExportData:
                         "children_ids": list(f.children_ids),
                         "index": f.index,
                     }
-                    for f in (s.bookmark_folders
-                              if s.bookmark_folders is not None else s.folders)
+                    for f in space_bookmark_folders
                 ],
             })
         return {

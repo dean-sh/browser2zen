@@ -6,7 +6,7 @@ working on browser2zen.
 ## What this is
 
 A migration tool that moves your browser setup — workspaces, pinned
-tabs, bookmarks, history, login state — from Arc / Chrome / Edge /
+tabs, bookmarks, history, login state — from Arc / Dia / Chrome / Edge /
 Brave / Firefox / Safari into [Zen Browser](https://zen-browser.app/).
 
 The user-facing surface is a single-window PyWebView app. Power users
@@ -46,6 +46,7 @@ BrowserExtractor.extract() → ExportData → to_legacy_dict()
 | `chromium.py` | _shared base_ | Profile discovery, Bookmarks-JSON walk, SNSS session read (`_snss.py`), Chromium SQLite paths, cookie-key dispatch |
 | `_snss.py` | _shared base_ | Parses Chromium's binary SessionService file (`<profile>/Sessions/Session_*`) to recover the real tab-strip **pinned + open tabs**. Bookmarks are NOT pinned tabs |
 | `chrome.py`, `edge.py`, `brave.py` | Chrome / Edge / Brave | Subclass `ChromiumExtractor`; only paths + Keychain service / process names differ |
+| `dia.py` | Dia | Subclasses `ChromiumExtractor`. Dia keeps Spaces and pinned tabs in an encrypted `tabs.db`, so they are read live over AppleScript (`profiles` of a window are Dia's Spaces) and snapshotted before `quit()`; falls back to SNSS when Dia is not running. The snapshot is dropped if Dia's session files change after the quit. Space ids derive from the space name (Dia's AppleScript exposes no stable id), so renaming a space creates a new Zen workspace on a re-run |
 | `firefox.py` | Firefox | Reads `places.sqlite` `moz_bookmarks` directly; v1 is bookmarks-only (history+cookies need a Firefox→Firefox merger) |
 | `safari.py` | Safari | Parses `Bookmarks.plist`; bookmarks-only; surfaces a clean error code if Full Disk Access is missing on Sequoia |
 
@@ -63,6 +64,10 @@ conflated, or you flood the sidebar with every bookmark. When an
 extractor leaves `bookmarks`/`bookmark_folders` as `None`,
 `to_legacy_dict()` falls them back to `pinned_tabs`/`folders`, so
 bookmark-only sources (Arc/Firefox/Safari) are unaffected.
+`ExportData.profile_bookmarks` / `profile_bookmark_folders` hold
+bookmarks that belong to no space (Dia's Chromium profile);
+`to_legacy_dict()` attaches them to the first space left after the
+Preview screen's exclusions, so unticking a space never drops them.
 
 ### Zen-side writers (`src/zen_*.py`)
 
@@ -141,7 +146,7 @@ wires the chosen extractor's paths through.
   (`window.pywebview.api.<method>`). Source picker, backups, preview,
   start/cancel migration.
 - `app/window.py` — PyWebView frameless-with-vibrancy window setup.
-- `app/frontend/` — vanilla HTML+CSS+JS, no build step. Six brand
+- `app/frontend/` — vanilla HTML+CSS+JS, no build step. Seven brand
   badges + Zen badge live under `assets/sources/`.
 
 ### Adding a new source

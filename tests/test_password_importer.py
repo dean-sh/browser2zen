@@ -48,6 +48,18 @@ def test_chromium_login_data_and_root(chrome_home):
     assert login_dbs[0].parent.name == profile.name
 
 
+def test_arc_login_data_and_root(arc_home):
+    from extractors import ArcExtractor
+
+    user_data = arc_home / "Library/Application Support/Arc/User Data"
+    _make_login_data(user_data / "Default" / "Login Data", usable=4)
+    _make_login_data(user_data / "Profile 1" / "Login Data", usable=1)
+
+    ext = ArcExtractor()
+    assert ext.user_data_root() == user_data
+    assert {p.parent.name for p in ext.login_data_paths()} == {"Default", "Profile 1"}
+
+
 def test_non_chromium_has_no_login_store(firefox_home):
     from extractors import FirefoxExtractor, SafariExtractor
 

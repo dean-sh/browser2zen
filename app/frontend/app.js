@@ -67,6 +67,7 @@ const state = {
     includeOpenTabs: true,
     includeHistory: false,
     includeCookies: false,
+    includePasswords: false,
     excludedSpaces: [],
   },
   steps: [],
@@ -484,6 +485,10 @@ function renderPreview(p) {
                                  `Copy ~${formatRows(p.historyRowsEstimate)} history rows`));
   toggles.appendChild(makeToggle("includeCookies", "Cookies & login state",
                                  `Copy ~${formatRows(p.cookiesEstimate)} cookies (Keychain prompt)`));
+  if (p.passwordsEstimate > 0) {
+    toggles.appendChild(makeToggle("includePasswords", "Saved passwords",
+                                   `Import ~${formatRows(p.passwordsEstimate)} logins (Zen opens briefly, Keychain prompt)`));
+  }
   toggles.appendChild(makeToggle("foldersCollapsed", "Collapse folders",
                                  "Imported folders start collapsed"));
 }
@@ -626,6 +631,11 @@ const STEP_ICON_BUILDERS = {
     svgChild(s, "path", {d: "M14 9 L14 12", "stroke-linecap": "round"});
     svgChild(s, "path", {d: "M16 9 L16 11.5", "stroke-linecap": "round"});
   },
+  passwords: (s) => {
+    svgChild(s, "circle", {cx: 6, cy: 9, r: 3.5});
+    svgChild(s, "path", {d: "M9 9 L16 9 L16 12", "stroke-linecap": "round"});
+    svgChild(s, "path", {d: "M13 9 L13 11.5", "stroke-linecap": "round"});
+  },
   finalize: (s) => svgChild(s, "path", {d: "M3 9 L7.5 13 L15 5",
                                          "stroke-width": 2, "stroke-linecap": "round", "stroke-linejoin": "round"}),
 };
@@ -669,6 +679,8 @@ function stepSubtitle(step) {
       return "Copying browsing history into places.sqlite";
     case "cookies":
       return `Decrypting ${src} cookies and writing to cookies.sqlite`;
+    case "passwords":
+      return `Opening Zen to import ${src} saved passwords`;
     case "finalize":
       return "Marking migration complete";
     default:
@@ -812,6 +824,7 @@ function visibleSteps() {
   return state.steps.filter(s => {
     if (s === "history")   return state.options.includeHistory;
     if (s === "cookies")   return state.options.includeCookies;
+    if (s === "passwords") return state.options.includePasswords;
     if (s === "containers" || s === "sessions") return state.options.includeWorkspaces || state.options.includePinnedTabs;
     if (s === "bookmarks") return state.options.includeBookmarks;
     if (s === "favicons")  return state.options.includeFavicons;
@@ -883,6 +896,10 @@ function stepSummaryText(step, s) {
   }
   if (step === "history") return `${formatRows(s.places_added ?? 0)} places · ${formatRows(s.visits_added ?? 0)} visits`;
   if (step === "cookies") return `${formatRows(s.imported ?? 0)} imported · ${formatRows(s.merged ?? 0)} merged`;
+  if (step === "passwords") {
+    if (s.skipped) return "skipped";
+    return `${formatRows(s.imported ?? 0)} passwords imported`;
+  }
   if (step === "sessions") {
     if (s.pinned == null && s.open == null) return s.ok ? "ok" : "";
     const parts = [];
@@ -1121,6 +1138,7 @@ function currentOptionsJson() {
     includeOpenTabs: state.options.includeOpenTabs,
     includeHistory: state.options.includeHistory,
     includeCookies: state.options.includeCookies,
+    includePasswords: state.options.includePasswords,
   });
 }
 

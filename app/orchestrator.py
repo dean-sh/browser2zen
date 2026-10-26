@@ -624,7 +624,7 @@ class MigrationOrchestrator:
                     else "passwords_source_unsupported")
             return {"error": code}
 
-        from env_check import zen_binary_path
+        from app.env_check import zen_binary_path
         zen_binary = zen_binary_path()
         if zen_binary is None:
             return {"error": "zen_binary_missing"}

@@ -249,3 +249,22 @@ def test_orchestrator_skips_non_chromium_passwords(firefox_home, zen_profile):
     o = MigrationOrchestrator(source=FirefoxExtractor())
     res = o._import_passwords(zen_profile)
     assert res["error"] == "passwords_source_unsupported"
+
+
+def test_orchestrator_chromium_reaches_importer(chrome_home, zen_profile, monkeypatch):
+    """A Chromium source must resolve the whole wiring (env_check import,
+    importer construction) and stop at a guard, never crash. Guards against
+    the bare-module import regression."""
+    import app.env_check as env_check
+    from app.orchestrator import MigrationOrchestrator
+    from extractors import ChromeExtractor
+
+    profile = ChromeExtractor().profile_paths()[0]
+    _make_login_data(profile / "Login Data", usable=2)
+    # Pin a resolvable binary and an empty login store so nothing launches.
+    monkeypatch.setattr(env_check, "zen_binary_path", lambda: Path(sys.executable))
+    (zen_profile / "key4.db").unlink(missing_ok=True)
+
+    o = MigrationOrchestrator(source=ChromeExtractor())
+    res = o._import_passwords(zen_profile)
+    assert res["error"] == "zen_login_store_missing"

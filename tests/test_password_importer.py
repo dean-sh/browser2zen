@@ -82,6 +82,17 @@ def test_preview_estimate_counts_usable_logins(chrome_home, zen_profile):
 
 # ---- importer guards ----
 
+@pytest.fixture
+def macos(monkeypatch):
+    """Pin the platform the importer supports.
+
+    The importer refuses anything but macOS and Windows, so guard tests
+    that are about a later check must say which platform they run on.
+    Without this, Linux CI stops at the platform guard first.
+    """
+    monkeypatch.setattr(sys, "platform", "darwin")
+
+
 def _importer(zen_profile: Path, source_user_data: Path, **kw):
     from zen_password_importer import ZenPasswordImporter
 
@@ -95,7 +106,7 @@ def _importer(zen_profile: Path, source_user_data: Path, **kw):
     return ZenPasswordImporter(**defaults)
 
 
-def test_dry_run_reports_plan_without_launching(tmp_path):
+def test_dry_run_reports_plan_without_launching(tmp_path, macos):
     zen = tmp_path / "zen"
     zen.mkdir()
     (zen / "key4.db").write_bytes(b"x")
@@ -107,7 +118,7 @@ def test_dry_run_reports_plan_without_launching(tmp_path):
     assert "imported" in res and res["imported"] == 0
 
 
-def test_guard_no_source_passwords(tmp_path):
+def test_guard_no_source_passwords(tmp_path, macos):
     zen = tmp_path / "zen"
     zen.mkdir()
     (zen / "key4.db").write_bytes(b"x")
@@ -117,7 +128,7 @@ def test_guard_no_source_passwords(tmp_path):
     assert res["error"] == "no_source_passwords"
 
 
-def test_guard_zen_binary_missing(tmp_path):
+def test_guard_zen_binary_missing(tmp_path, macos):
     zen = tmp_path / "zen"
     zen.mkdir()
     (zen / "key4.db").write_bytes(b"x")
@@ -127,7 +138,7 @@ def test_guard_zen_binary_missing(tmp_path):
     assert res["error"] == "zen_binary_missing"
 
 
-def test_guard_login_store_missing(tmp_path):
+def test_guard_login_store_missing(tmp_path, macos):
     zen = tmp_path / "zen"
     zen.mkdir()
     src = tmp_path / "User Data"
@@ -137,7 +148,7 @@ def test_guard_login_store_missing(tmp_path):
 
 
 @pytest.mark.skipif(sys.platform.startswith("win"), reason="POSIX fcntl lock")
-def test_guard_zen_running_detects_lock(tmp_path):
+def test_guard_zen_running_detects_lock(tmp_path, macos):
     zen = tmp_path / "zen"
     zen.mkdir()
     (zen / "key4.db").write_bytes(b"x")
@@ -166,6 +177,164 @@ def test_guard_zen_running_detects_lock(tmp_path):
     finally:
         holder.terminate()
         holder.wait(timeout=5)
+
+
+@pytest.mark.parametrize("platform", ["linux", "freebsd14"])
+def test_guard_unsupported_platform_runs_first(tmp_path, monkeypatch, platform):
+    """Off macOS/Windows there is no keystore Zen can decrypt with, so the
+    importer stops before touching the profile, even in dry-run mode."""
+    monkeypatch.setattr(sys, "platform", platform)
+    zen = tmp_path / "zen"
+    zen.mkdir()
+    (zen / "key4.db").write_bytes(b"x")
+    src = tmp_path / "User Data"
+    (src / "Default").mkdir(parents=True)
+
+    res = _importer(zen, src, dry_run=True).import_passwords()
+    assert res["error"] == "passwords_unsupported_platform"
+    assert "would_import_from" not in res
+    assert sorted(p.name for p in zen.iterdir()) == ["key4.db"]
+
+
+def test_guard_windows_is_supported(tmp_path, monkeypatch):
+    """Windows passes the platform guard and reaches the next check."""
+    monkeypatch.setattr(sys, "platform", "win32")
+    zen = tmp_path / "zen"
+    zen.mkdir()
+    src = tmp_path / "User Data"
+    (src / "Default").mkdir(parents=True)
+    res = _importer(zen, src).import_passwords()
+    assert res["error"] == "zen_login_store_missing"
+
+
+# ---- per-profile outcomes ----
+
+def test_summarize_all_profiles_imported():
+    from zen_password_importer import summarize_report
+
+    res = summarize_report({
+        "imported": 7,
+        "perProfile": {"Default": {"added": 5}, "Profile 1": {"added": 2}},
+        "missing": [],
+    })
+    assert res["profiles"] == {"Default": 5, "Profile 1": 2}
+    assert res["failed"] == {} and res["missing"] == []
+    assert "warning" not in res and "error" not in res
+
+
+def test_summarize_mixed_success_is_partial():
+    from zen_password_importer import summarize_report
+
+    res = summarize_report({
+        "imported": 5,
+        "perProfile": {"Default": {"added": 5}, "Profile 1": {"error": "NS_ERROR_FAILURE"}},
+        "missing": [],
+    })
+    assert res["profiles"] == {"Default": 5}
+    assert res["failed"] == {"Profile 1": "NS_ERROR_FAILURE"}
+    assert res["warning"] == "partial_import"
+    assert "error" not in res
+
+
+def test_summarize_missing_profile_is_partial():
+    from zen_password_importer import summarize_report
+
+    res = summarize_report({
+        "imported": 3,
+        "perProfile": {"Default": {"added": 3}},
+        "missing": ["Profile 2"],
+    })
+    assert res["missing"] == ["Profile 2"]
+    assert res["warning"] == "partial_import"
+
+
+def test_summarize_no_profile_migrated_is_error():
+    from zen_password_importer import summarize_report
+
+    res = summarize_report({
+        "imported": 0,
+        "perProfile": {"Default": {"error": "boom"}},
+        "missing": ["Profile 1"],
+    })
+    assert res["error"] == "no_profiles_imported"
+    assert res["failed"] == {"Default": "boom"}
+    assert res["missing"] == ["Profile 1"]
+
+
+def test_summarize_zero_imports_warns():
+    from zen_password_importer import summarize_report
+
+    res = summarize_report({
+        "imported": 0,
+        "perProfile": {"Default": {"added": 0}},
+        "missing": [],
+    })
+    assert res["warning"] == "no_passwords_imported"
+    assert "error" not in res
+
+
+def _password_step_events(monkeypatch, zen_profile, summary):
+    from app.orchestrator import MigrationOrchestrator
+    from extractors import ChromeExtractor
+
+    o = MigrationOrchestrator(source=ChromeExtractor())
+    monkeypatch.setattr(o, "_import_passwords", lambda _zen: summary)
+    o._run_passwords_step(zen_profile)
+    return list(o.bus.drain())
+
+
+def test_step_surfaces_mixed_success(chrome_home, zen_profile, monkeypatch):
+    events = _password_step_events(monkeypatch, zen_profile, {
+        "imported": 5, "profiles": {"Default": 5},
+        "failed": {"Profile 1": "NS_ERROR_FAILURE"}, "missing": ["Profile 2"],
+        "warning": "partial_import",
+    })
+    done = next(e for e in events if e["kind"] == "step_done")
+    notice = done["summary"]["notice"]
+    assert "5 passwords from 1 of 3 profiles" in notice
+    assert "Profile 1 failed (NS_ERROR_FAILURE)" in notice
+    assert "did not find Profile 2" in notice
+    assert done["summary"]["warning"] == "partial_import"
+    assert any(e["kind"] == "warn" and e["message"] == notice for e in events)
+
+
+def test_step_surfaces_missing_profiles(chrome_home, zen_profile, monkeypatch):
+    events = _password_step_events(monkeypatch, zen_profile, {
+        "imported": 2, "profiles": {"Default": 2}, "failed": {},
+        "missing": ["Profile 3", "Profile 4"], "warning": "partial_import",
+    })
+    done = next(e for e in events if e["kind"] == "step_done")
+    assert "did not find Profile 3, Profile 4" in done["summary"]["notice"]
+
+
+def test_step_surfaces_zero_imports(chrome_home, zen_profile, monkeypatch):
+    events = _password_step_events(monkeypatch, zen_profile, {
+        "imported": 0, "profiles": {"Default": 0}, "failed": {}, "missing": [],
+        "warning": "no_passwords_imported",
+    })
+    done = next(e for e in events if e["kind"] == "step_done")
+    assert "No passwords were imported" in done["summary"]["notice"]
+    assert any(e["kind"] == "warn" for e in events)
+
+
+def test_step_errors_when_no_profile_migrated(chrome_home, zen_profile, monkeypatch):
+    events = _password_step_events(monkeypatch, zen_profile, {
+        "imported": 0, "profiles": {}, "failed": {"Default": "boom"},
+        "missing": [], "error": "no_profiles_imported",
+    })
+    assert not any(e["kind"] == "step_done" for e in events)
+    err = next(e for e in events if e["kind"] == "step_error")
+    assert "any Chrome profile" in err["detail"]
+    assert "Default failed (boom)" in err["detail"]
+
+
+def test_step_clean_import_has_no_notice(chrome_home, zen_profile, monkeypatch):
+    events = _password_step_events(monkeypatch, zen_profile, {
+        "imported": 4, "profiles": {"Default": 4}, "failed": {}, "missing": [],
+    })
+    done = next(e for e in events if e["kind"] == "step_done")
+    assert "notice" not in done["summary"]
+    assert not any(e["kind"] == "warn" for e in events)
 
 
 # ---- temp prefs + backup ----

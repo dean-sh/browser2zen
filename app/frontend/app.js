@@ -74,6 +74,7 @@ const state = {
   stepLabels: {},
   stepStates: {},
   stepSummaries: {},
+  stepErrors: {},
   logLines: [],
   pollHandle: null,
   startedAt: 0,
@@ -751,6 +752,7 @@ async function goToProgress() {
   state.stepLabels = meta.labels;
   state.stepStates = Object.fromEntries(state.steps.map(s => [s, "pending"]));
   state.stepSummaries = {};
+  state.stepErrors = {};
   state.logLines = [];
   state.activeStep = null;
   state.activeDetail = "";
@@ -796,7 +798,9 @@ function handleEvent(ev) {
     state.activeDetail = "";
     state.activeProgress = null;
   } else if (ev.kind === "step_done") {
-    state.stepStates[ev.step] = "done";
+    // A step that finished with a warning (e.g. some password profiles
+    // failed) stays visibly distinct from a clean success.
+    state.stepStates[ev.step] = (ev.summary && ev.summary.warning) ? "warn" : "done";
     if (ev.summary) state.stepSummaries[ev.step] = ev.summary;
     if (state.activeStep === ev.step) {
       state.activeStep = null;
@@ -805,6 +809,7 @@ function handleEvent(ev) {
     }
   } else if (ev.kind === "step_error") {
     state.stepStates[ev.step] = "error";
+    state.stepErrors[ev.step] = ev.detail || ev.message || "";
   } else {
     state.logLines.push({kind: ev.kind, message: ev.message, step: ev.step});
     if (state.logLines.length > 500) state.logLines.shift();
@@ -846,7 +851,7 @@ function renderProgress() {
   const total = steps.length;
   const meta = $("progress-meta");
   if (activeIdx >= 0)                                          meta.textContent = `Step ${activeIdx + 1} of ${total}`;
-  else if (steps.every(s => state.stepStates[s] === "done"))   meta.textContent = `${total} of ${total} done`;
+  else if (steps.every(s => ["done", "warn"].includes(state.stepStates[s]))) meta.textContent = `${total} of ${total} done`;
   else                                                         meta.textContent = "Working";
 
   // unified timeline
@@ -862,7 +867,7 @@ function renderProgress() {
 }
 
 function makeRow(step, st) {
-  const summary = (st === "done") ? stepSummaryText(step, state.stepSummaries[step]) : "";
+  const summary = (st === "done" || st === "warn") ? stepSummaryText(step, state.stepSummaries[step]) : "";
   return el("li", {class: "tl-step", dataset: {step, state: st}}, [
     el("div", {class: "ico"}, [makeStepIcon(step)]),
     el("span", {class: "lbl", text: state.stepLabels[step] || step}),
@@ -898,7 +903,10 @@ function stepSummaryText(step, s) {
   if (step === "cookies") return `${formatRows(s.imported ?? 0)} imported · ${formatRows(s.merged ?? 0)} merged`;
   if (step === "passwords") {
     if (s.skipped) return "skipped";
-    return `${formatRows(s.imported ?? 0)} passwords imported`;
+    const imported = `${formatRows(s.imported ?? 0)} passwords imported`;
+    const bad = Object.keys(s.failed || {}).length + (s.missing || []).length;
+    if (bad) return `${imported}, ${bad} ${bad === 1 ? "profile" : "profiles"} not imported`;
+    return imported;
   }
   if (step === "sessions") {
     if (s.pinned == null && s.open == null) return s.ok ? "ok" : "";
@@ -953,7 +961,9 @@ async function finishOk(finalState) {
     summary.title = "";
     summary.onclick = null;
   } else {
-    headline.textContent = "All set.";
+    const problems = renderDoneNotes();
+    headline.textContent = problems ? "Finished with problems." : "All set.";
+    $("screen-done").dataset.outcome = problems ? "warn" : "ok";
     const ext = state.stepSummaries.extract || {};
     summary.textContent = ext.pinned
       ? `${ext.pinned} pinned tabs across ${ext.spaces} spaces. Backups saved next to your Zen profile.`
@@ -963,6 +973,10 @@ async function finishOk(finalState) {
     summary.onclick = null;
   }
 
+  if (isBackup) {
+    $("screen-done").dataset.outcome = "ok";
+    $("done-notes").style.display = "none";
+  }
   launch.style.display = isBackup ? "none" : "";
   backupsSection.style.display = isBackup ? "none" : "";
   $("done-back").style.display = isBackup ? "" : "none";
@@ -978,6 +992,22 @@ async function finishOk(finalState) {
       }));
     }
   }
+}
+
+// Lists warnings and failed steps on the Done screen so a partial
+// migration never reads as a clean one. Returns how many it listed.
+function renderDoneNotes() {
+  const list = $("done-notes"); clear(list);
+  for (const s of visibleSteps()) {
+    const label = state.stepLabels[s] || s;
+    let text = "";
+    // step_error details come from format_exception_only; drop the class name.
+    if (state.stepStates[s] === "error") text = `${label} failed. ${(state.stepErrors[s] || "").replace(/^\w+: /, "")}`;
+    else if (state.stepStates[s] === "warn") text = (state.stepSummaries[s] || {}).notice || `${label} finished with warnings.`;
+    if (text) list.appendChild(el("li", {dataset: {step: s}, text: text.trim()}));
+  }
+  list.style.display = list.children.length ? "" : "none";
+  return list.children.length;
 }
 
 $("done-launch").addEventListener("click", async () => {
@@ -1542,6 +1572,7 @@ function startProgressPolling() {
   setScreen("progress");
   state.stepStates = {};
   state.stepSummaries = {};
+  state.stepErrors = {};
   state.logLines = [];
   state.activeStep = null;
   state.activeDetail = "";

@@ -96,6 +96,40 @@ const plan = JSON.parse(arguments[0]);
 """
 
 
+def summarize_report(report: dict) -> dict:
+    """Fold Zen's in-browser report into the result the UI renders.
+
+    Every requested profile lands in exactly one bucket. ``profiles`` maps
+    a migrated profile to the logins it added, ``failed`` maps a profile
+    whose migration threw to Zen's error, and ``missing`` lists profiles
+    Zen's migrator did not find. Partial outcomes carry a ``warning`` and a
+    run where no profile migrated carries an ``error``, so a partial import
+    never reads as a clean success.
+    """
+    per = report.get("perProfile") or {}
+    profiles = {
+        str(pid): int(v.get("added", 0))
+        for pid, v in per.items() if "error" not in v
+    }
+    failed = {str(pid): str(v["error"]) for pid, v in per.items() if "error" in v}
+    missing = [str(pid) for pid in report.get("missing") or []]
+    result: dict = {
+        "imported": int(report.get("imported", 0)),
+        "profiles": profiles,
+        "failed": failed,
+        "missing": missing,
+    }
+    if not profiles:
+        result["error"] = "no_profiles_imported"
+    elif failed or missing:
+        result["warning"] = "partial_import"
+    elif result["imported"] == 0:
+        # Every profile ran but nothing landed. Most often the Keychain or
+        # DPAPI prompt was declined, or Zen already had every login.
+        result["warning"] = "no_passwords_imported"
+    return result
+
+
 class ZenPasswordImporter:
     """Import Chromium-format saved passwords into a Zen profile."""
 
@@ -267,9 +301,11 @@ class ZenPasswordImporter:
     # ---- orchestration ----
 
     def import_passwords(self) -> dict:
-        result: dict = {"imported": 0, "profiles": {}}
+        result: dict = {"imported": 0, "profiles": {}, "failed": {}, "missing": []}
 
-        if sys.platform not in ("darwin", "win32") and os.name != "nt":
+        # Zen's Chromium importer decrypts through the macOS Keychain or
+        # Windows DPAPI; there is no supported keystore path elsewhere.
+        if sys.platform not in ("darwin", "win32"):
             result["error"] = "passwords_unsupported_platform"
             return result
         if not self.profile_ids or not self.source_user_data.is_dir():
@@ -329,14 +365,10 @@ class ZenPasswordImporter:
             result["error"] = "password_import_failed"
             return result
 
-        per = (report or {}).get("perProfile", {}) if isinstance(report, dict) else {}
-        result["profiles"] = {pid: v.get("added", 0) for pid, v in per.items()}
-        result["imported"] = int(report.get("imported", 0)) if isinstance(report, dict) else 0
-        if result["imported"] == 0 and existing == (report or {}).get("after", existing):
-            # Nothing landed although a source was selected; most often the
-            # Keychain/DPAPI prompt was declined.
-            result["warning"] = "no_passwords_imported"
-        return result
+        if not isinstance(report, dict):
+            result["error"] = "password_import_failed"
+            return result
+        return {**summarize_report(report), "backup": result["backup"]}
 
     def _wait_for_exit(self, proc: subprocess.Popen) -> None:
         try:

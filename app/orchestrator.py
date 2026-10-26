@@ -188,7 +188,43 @@ _PASSWORD_ERROR_MESSAGES = {
         "during the write.",
     "password_import_failed":
         "Zen's password importer did not finish; passwords skipped.",
+    "no_profiles_imported":
+        "Zen could not import passwords from any {source} profile.",
 }
+
+# Zen's per-profile errors can be long stack-ish strings; the UI shows a
+# sentence per profile, so keep each one readable.
+_PROFILE_ERROR_LIMIT = 160
+
+
+def _password_notice(summary: dict) -> str:
+    """Describe per-profile password outcomes in plain sentences.
+
+    Returns an empty string for a clean import. Profile ids are the
+    source's on-disk directory names (``Default``, ``Profile 1``).
+    """
+    profiles = summary.get("profiles") or {}
+    failed = summary.get("failed") or {}
+    missing = summary.get("missing") or []
+    total = len(profiles) + len(failed) + len(missing)
+    sentences: list[str] = []
+    if failed or missing:
+        if profiles:
+            sentences.append(
+                f"Imported {summary.get('imported', 0)} passwords from "
+                f"{len(profiles)} of {total} profiles."
+            )
+        for pid, err in failed.items():
+            err = err if len(err) <= _PROFILE_ERROR_LIMIT else err[:_PROFILE_ERROR_LIMIT] + "..."
+            sentences.append(f"{pid} failed ({err}).")
+        if missing:
+            sentences.append(f"Zen's importer did not find {', '.join(missing)}.")
+    elif summary.get("warning") == "no_passwords_imported":
+        sentences.append(
+            "No passwords were imported. Zen skips logins it already has, "
+            "and nothing imports if the Keychain prompt is denied."
+        )
+    return " ".join(sentences)
 
 
 # ------------------------------------------------------------------ orchestrator
@@ -584,24 +620,7 @@ class MigrationOrchestrator:
 
         # 9: passwords ---------------------------------------------------
         if opts.include_passwords:
-            self._start_step("passwords")
-            try:
-                summary = self._import_passwords(zen_profile)
-                err = summary.get("error")
-                if err:
-                    msg = _PASSWORD_ERROR_MESSAGES.get(
-                        err, f"Password import failed: {err}"
-                    ).format(source=self.source.display_name)
-                    # A source with no passwords, or a non-Chromium source,
-                    # is a clean skip rather than a migration failure.
-                    if err in ("no_source_passwords", "passwords_source_unsupported"):
-                        self._done_step("passwords", summary={"imported": 0, "skipped": msg})
-                    else:
-                        self._error_step("passwords", RuntimeError(msg))
-                else:
-                    self._done_step("passwords", summary=summary)
-            except Exception as exc:
-                self._error_step("passwords", exc)
+            self._run_passwords_step(zen_profile)
             yield from self._drain_yield()
 
         # 10: finalize ---------------------------------------------------
@@ -614,6 +633,30 @@ class MigrationOrchestrator:
             pass
         self._done_step("finalize", message="Migration complete")
         yield from self._drain_yield()
+
+    def _run_passwords_step(self, zen_profile: Path) -> None:
+        self._start_step("passwords")
+        try:
+            summary = self._import_passwords(zen_profile)
+        except Exception as exc:
+            self._error_step("passwords", exc)
+            return
+        err = summary.get("error")
+        notice = _password_notice(summary)
+        if err in ("no_source_passwords", "passwords_source_unsupported"):
+            # Nothing to import is a clean skip, not a migration failure.
+            msg = _PASSWORD_ERROR_MESSAGES[err].format(source=self.source.display_name)
+            self._done_step("passwords", summary={"imported": 0, "skipped": msg})
+        elif err:
+            msg = _PASSWORD_ERROR_MESSAGES.get(
+                err, f"Password import failed: {err}"
+            ).format(source=self.source.display_name)
+            self._error_step("passwords", RuntimeError(f"{msg} {notice}".strip()))
+        else:
+            if notice:
+                summary = {**summary, "notice": notice}
+                self._emit({"kind": "warn", "step": "passwords", "message": notice})
+            self._done_step("passwords", summary=summary)
 
     def _import_passwords(self, zen_profile: Path) -> dict:
         user_data = self.source.user_data_root()
